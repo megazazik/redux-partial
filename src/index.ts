@@ -61,21 +61,22 @@ export type GetPartial<S, A extends Action> = {
 export function makePartial<TStore extends StoreWithMandatoryMethods<any, any>>(
 	store: TStore
 ): StoreWithGetPartial<TStore> {
-	let prevState: any = store.getState();
+	let prevFullState: any = store.getState();
 
 	const listenerConfigs: Record<
 		string,
 		{ listeners: Array<() => void>; select: (s: any) => any }
 	> = {};
+	let unsubscribe: () => void;
 
-	store.subscribe(() => {
+	const onStateChangeListener = () => {
 		const newState = store.getState();
 
-		([] as Array<() => void>)
+		const listeners = ([] as Array<() => void>)
 			.concat(
 				...Object.values(listenerConfigs).map(
 					({ select, listeners }) => {
-						if (select(newState) === select(prevState)) {
+						if (select(newState) === select(prevFullState)) {
 							return [];
 						}
 
@@ -86,11 +87,12 @@ export function makePartial<TStore extends StoreWithMandatoryMethods<any, any>>(
 			.filter(
 				(listener, index, listeners) =>
 					listeners.indexOf(listener) === index
-			)
-			.forEach((listener) => listener());
+			);
 
-		prevState = newState;
-	});
+		prevFullState = newState;
+
+		listeners.forEach((listener) => listener());
+	};
 
 	return {
 		...store,
@@ -135,20 +137,36 @@ export function makePartial<TStore extends StoreWithMandatoryMethods<any, any>>(
 			}
 
 			let prevState: any;
-			let needSelectState = true;
+			let prevStateFields: any[] = [];
 
 			return makePartial({
 				dispatch: store.dispatch,
 				getState: () => {
-					if (needSelectState) {
-						needSelectState = false;
-						prevState = selectPartialState(store.getState());
+					const newState = store.getState();
+					const stateFields = Object.values(keys).map((select) =>
+						select(newState)
+					);
+
+					if (
+						stateFields.length !== prevStateFields.length ||
+						stateFields.some(
+							(currentFieldValue, index) =>
+								currentFieldValue !== prevStateFields[index]
+						)
+					) {
+						prevStateFields = stateFields;
+						prevState = selectPartialState(newState);
 					}
+
 					return prevState;
 				},
 				subscribe: (paramListener: () => void) => {
+					if (!Object.keys(listenerConfigs).length) {
+						prevFullState = store.getState();
+						unsubscribe = store.subscribe(onStateChangeListener);
+					}
+
 					const newListener = () => {
-						needSelectState = true;
 						paramListener();
 					};
 					Object.entries(keys).forEach(([key, selectField]) => {
@@ -169,7 +187,15 @@ export function makePartial<TStore extends StoreWithMandatoryMethods<any, any>>(
 							if (i !== -1) {
 								listenerConfigs[key].listeners.splice(i, 1);
 							}
+
+							if (listenerConfigs[key].listeners.length === 0) {
+								delete listenerConfigs[key];
+							}
 						});
+
+						if (Object.keys(listenerConfigs).length === 0) {
+							unsubscribe();
+						}
 					};
 				},
 			});

@@ -2,7 +2,7 @@
 
 [![npm version](https://badge.fury.io/js/redux-partial.svg)](https://badge.fury.io/js/redux-partial)
 
-Library to work with a part of `redux` store as if it is a full-fledged store. You can subscribe to changes of a part of the state get access only to a part.
+Library to work with a part of `redux` store as if it is a full-fledged store. You can subscribe to changes of a part of the state get access only to a part. All state change listeners will be invoked only if a particular part ot the state is changed. So it can highly improve performance of an application where there are many connected components.
 
 -   [Make a store partial](#make-a-store-partial)
 -   [Work with a part of the state](#work-with-a-part-of-the-state)

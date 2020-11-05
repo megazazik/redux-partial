@@ -695,3 +695,119 @@ tape('Partial state. Dispatch', (t) => {
 
 	t.end();
 });
+
+tape('Partial state. Change state inside listener', (t) => {
+	const store = getStore();
+
+	const partialF1Value = store.getPartial({ f1: { value: true } });
+	const partialF2 = store.getPartial({ f2: true });
+
+	const onF2Changed = spy();
+
+	partialF2.subscribe(onF2Changed);
+
+	partialF1Value.subscribe(() => {
+		store.dispatch(
+			setState({
+				...store.getState(),
+				f2: 'new-f2-value',
+			})
+		);
+	});
+
+	store.dispatch(
+		setState({
+			...store.getState(),
+			f1: { value: 'new' },
+		})
+	);
+
+	t.ok(onF2Changed.calledOnce);
+
+	store.dispatch(
+		setState({
+			...store.getState(),
+			f2: 'new-f2-value-1',
+		})
+	);
+
+	t.ok(onF2Changed.calledTwice);
+
+	t.end();
+});
+
+tape('Partial state. No changes of subscribed part of state', (t) => {
+	const store = getStore();
+
+	const partial = store.getPartial({ f1: { value: true }, f2: true });
+
+	const onChanged = spy();
+
+	partial.subscribe(onChanged);
+
+	store.dispatch(
+		setState({
+			...store.getState(),
+			f3: 90,
+		})
+	);
+
+	store.dispatch(
+		setState({
+			...store.getState(),
+			f3: 92,
+		})
+	);
+
+	t.ok(onChanged.notCalled);
+
+	t.end();
+});
+
+tape('Partial state. Subscribe / unsubscribe root state', (t) => {
+	const originalStore = createStore(reducer, {
+		f1: { value: 'f1Value' },
+		f2: 'f2string',
+		f3: 12,
+		f4: {
+			v1: true,
+			v2: { value: 21, value2: 65 },
+		},
+	});
+
+	const originSubscribe = originalStore.subscribe;
+
+	const newSubscribe = spy((listener) => {
+		return spy(originSubscribe(listener));
+	});
+
+	originalStore.subscribe = newSubscribe;
+
+	const store = makePartial(originalStore);
+
+	t.ok(newSubscribe.notCalled);
+
+	const unsubscribe = store.getPartial('f1').subscribe(() => {});
+	const unsubscribe2 = store.getPartial('f2').subscribe(() => {});
+
+	t.ok(newSubscribe.calledOnce);
+
+	t.ok(newSubscribe.returnValues[0].notCalled);
+
+	unsubscribe();
+	unsubscribe2();
+
+	t.ok(newSubscribe.returnValues[0].calledOnce);
+
+	const unsubscribe3 = store.getPartial('f1').subscribe(() => {});
+
+	t.ok(newSubscribe.calledTwice);
+
+	t.ok(newSubscribe.returnValues[1].notCalled);
+
+	unsubscribe3();
+
+	t.ok(newSubscribe.returnValues[1].calledOnce);
+
+	t.end();
+});
